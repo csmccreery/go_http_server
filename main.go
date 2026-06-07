@@ -20,10 +20,10 @@ func (cfg *apiConfig) middleWareMetricsInc(next http.Handler) http.Handler {
 }
 
 func (cfg *apiConfig) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	
-	fmt.Fprintf(w, "Hits: %d", cfg.fileServerHits.Load())
+	fmt.Fprintf(w, "<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.fileServerHits.Load())
 }
 
 
@@ -45,6 +45,25 @@ func (cfg *apiConfig) healthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (cfg *apiConfig) validateChirp(w http.ResponseWriter, r *http.Request) {
+	type content struct {
+		body string 'json:"body"'
+	}
+
+	contentVal := content{}
+
+	dat, err := json.Marshal(contentVal)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "%s", dat)
+}
+
 func main() {
 	servMux := http.NewServeMux()
 	
@@ -55,10 +74,10 @@ func main() {
 
 	servMux.Handle("/app/", http.StripPrefix("/app/", cfg.middleWareMetricsInc(fileServer)))
 	servMux.Handle("/app/assets", http.StripPrefix("/app/", cfg.middleWareMetricsInc(fileServer)))
-	
-	servMux.HandleFunc("/metrics", cfg.handleMetrics)
-	servMux.HandleFunc("/reset", cfg.resetMetrics)
-	servMux.HandleFunc("/healthz", cfg.healthHandler)
+	servMux.HandleFunc("POST /api/validate_chirp" cfg.validateChirp)
+	servMux.HandleFunc("GET /admin/metrics", cfg.handleMetrics)
+	servMux.HandleFunc("POST /admin/reset", cfg.resetMetrics)
+	servMux.HandleFunc("GET /api/healthz", cfg.healthHandler)
 	
 	
 	fmt.Printf("Listening on port 8080")
