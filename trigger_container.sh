@@ -20,6 +20,7 @@ RUN_PATH=$(sudo guix system container "$CONTAINER_FILE" --network \
      --expose=$HOME/.gitconfig=/home/$USER_NAME/.gitconfig \
      --expose=$HOME/.gitconfig-github=/home/$USER_NAME/.gitconfig-github \
      --expose=$HOME/.gitconfig-codeberg=/home/$USER_NAME/.gitconfig-codeberg \
+     --expose=$HOME/Projects/Github/bootdev-projects/http_servers=/home/$USER_NAME/src/ \
      --expose=$HOME/.ssh=/home/$USER_NAME/.ssh | tail -n 1)
 
 echo "Running container"
