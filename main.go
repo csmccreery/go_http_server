@@ -1,35 +1,42 @@
 package main
 
+import _ "github.com/lib/pq"
+
 import (
 	"strings"
+	"github.com/go_http_server/internal/database"
 	"time"
+	"os"
 	"fmt"
+	"database/sql"
 	"sync/atomic"
 	"log"
 	"net/http"
 	"encoding/json"
-	"github.com/satori/uuid.go"
+	"github.com/joho/godotenv"
+	"github.com/google/uuid"
 )
+
 
 type ApiConfig struct {
 	fileServerHits atomic.Int32
+	Queries *database.Queries
 	Ok bool
 }
 
-type Content struct {
-	Body string
+type User struct {
+	ID uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email string `json:"email"`
 }
 
 type Chirp struct {
-	U1 string
-	Length int
-	Timestamp time.Time
-	Content Content
-}
-
-func generateUUID() (string) {
-	u1 := uuid.NewV4()
-	return u1.String()
+	ID string `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body string `json:"body"`
+	UserID string `json:"user_id"`
 }
 
 func cleanProfaneWords(chirp string, profaneMap map[string]bool) string {
@@ -61,10 +68,12 @@ func (cfg *ApiConfig) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 
 func (cfg *ApiConfig) resetMetrics(w http.ResponseWriter, r *http.Request) {
+	cfg.fileServerHits.Store(0)
+	cfg.Queries.ClearUsers(r.Context())
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Sucessfully cleared users table")
 
-	cfg.fileServerHits.Store(0)
 }
 
 func (cfg *ApiConfig) healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -87,57 +96,117 @@ func (cfg *ApiConfig) respondWithJSON(w http.ResponseWriter, code int, payload a
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(code)
 	fmt.Fprintf(w, string(data))
 }
 
 func (cfg *ApiConfig) respondWithError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(400)
+	w.WriteHeader(code)
+	fmt.Fprintf(w, "Error: %s", msg)
 }
 
-func (cfg *ApiConfig) validateChirp(w http.ResponseWriter, r *http.Request) {
-	content := Content{}
+func (cfg *ApiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
+	user := User{}
+
+	type content struct {
+		Email string `json:"email"`
+	}
+
+	payload := content{}
 
 	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&content)
+	err := decoder.Decode(&payload)
 	if err != nil {
-		log.Printf("Error decoding chirp content: %s", err)
+		log.Printf("Error decoding user creation request: %s", err)
 		w.WriteHeader(500)
 		return
 	}
 
-	if (len(content.Body) > 140) {
-		cfg.respondWithError(w, 400, "Chirp is too long")
-	} else {
-		profaneMap := map[string]bool{
-			"kerfuffle": true,
-			"sharbert": true,
-			"fornax": true,
-		}
-		cleanedBody := cleanProfaneWords(content.Body, profaneMap)
-		
-		type Payload struct {
-			Valid bool `json:"valid"`
-			Cleaned string `json:"cleaned_body"`
-		}
-
-		payload := Payload{Valid: true, Cleaned: cleanedBody}
-		cfg.respondWithJSON(w, 200, payload)
+	user.Email = payload.Email
+	_, err = cfg.Queries.CreateUser(r.Context(), payload.Email)
+	if err != nil {
+		cfg.respondWithError(w, 400, "Failed to create new user in database")
 	}
+	cfg.respondWithJSON(w, 201, user)
+
+}
+
+func (cfg *ApiConfig) ClearUsers(w http.ResponseWriter, r *http.Request) {
+	cfg.Queries.ClearUsers(r.Context())
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Sucessfully cleared users table")
+}
+
+func (cfg *ApiConfig) chirp(w http.ResponseWriter, r *http.Request) {
+	chirp := Chirp{}
+	type Content struct {
+		Body string `json:"body"`
+		User_Id string `json:"user_id"`
+	}
+
+	content := Content{}
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&content)
+	if err != nil {
+		cfg.respondWithError(w, 400, "Failed to decode JSON request")
+	}
+
+	if len(content.Body) > 140 {
+		cfg.respondWithError(w, 400, "Chirp is too long")
+	}
+
+	profaneMap := map[string]bool{
+		"kerfuffle": true,
+		"sharbert": true,
+		"fornax": true,
+	}
+	cleanedBody := cleanProfaneWords(content.Body, profaneMap)
+
+	chirp.Body = cleanedBody
+	chirp.UserID = content.User_Id
+
+	user_id, err := uuid.Parse(content.User_Id)
+	if err != nil {
+		cfg.respondWithError(w, 400, "Failed to extract uuid from chirp")
+	}
+
+	params := database.CreateChirpParams{
+		Body: cleanedBody,
+		UserID: user_id,
+	}
+
+	_, err = cfg.Queries.CreateChirp(r.Context(), params)
+	if err != nil {
+		fmt.Printf("Error: %v", err)
+		cfg.respondWithError(w, 400, "Failed to update database")
+	}
+
+	cfg.respondWithJSON(w, 201, chirp)
 }
 	
 func main() {
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	db, err :=sql.Open("postgres", dbURL)
+	if err != nil {
+		return
+	}
+	dbQueries := database.New(db)
+		
 	servMux := http.NewServeMux()
 	
 	cfg := &ApiConfig{}
 	cfg.Ok = true
+	cfg.Queries = dbQueries
 
 	fileServer := http.FileServer(http.Dir("."))
 
 	servMux.Handle("/app/", http.StripPrefix("/app/", cfg.middleWareMetricsInc(fileServer)))
 	servMux.Handle("/app/assets", http.StripPrefix("/app/", cfg.middleWareMetricsInc(fileServer)))
-	servMux.HandleFunc("POST /api/validate_chirp", cfg.validateChirp)
+	servMux.HandleFunc("POST /api/users", cfg.CreateUser)
+	servMux.HandleFunc("POST /api/chirps", cfg.chirp)
 	servMux.HandleFunc("GET /admin/metrics", cfg.handleMetrics)
 	servMux.HandleFunc("POST /admin/reset", cfg.resetMetrics)
 	servMux.HandleFunc("GET /api/healthz", cfg.healthHandler)

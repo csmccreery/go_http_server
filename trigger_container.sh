@@ -6,9 +6,7 @@ set -euo pipefail
 # Create a guix container with all the goodies we need
 echo "Setting variables"
 
-USER_NAME=$1
-CONTAINER_FILE=$2
-GIT_PATH=$3
+CONTAINER_FILE="./go_dev_container.scm"
 PID_FILE=$(mktemp /tmp/guix-container-XXXXXX.pid)
 
 
@@ -17,11 +15,8 @@ trap 'rm -rf "$PID_FILE"' EXIT
 echo "Creating container"
 
 RUN_PATH=$(sudo guix system container "$CONTAINER_FILE" --network \
-     --expose=$HOME/.gitconfig=/home/$USER_NAME/.gitconfig \
-     --expose=$HOME/.gitconfig-github=/home/$USER_NAME/.gitconfig-github \
-     --expose=$HOME/.gitconfig-codeberg=/home/$USER_NAME/.gitconfig-codeberg \
-     --expose=$HOME/Projects/Github/bootdev-projects/http_servers=/home/$USER_NAME/src/ \
-     --expose=$HOME/.ssh=/home/$USER_NAME/.ssh | tail -n 1)
+     --expose=$HOME/Projects/Github/bootdev-projects/http_servers=/root/src/ \
+     --expose=$HOME/.ssh=/root/.ssh | tail -n 1)
 
 echo "Running container"
 
@@ -33,11 +28,12 @@ sleep 5
 # At this point one might ask why I'm doing this vice just using podman.
 CONTAINER_PID=$(cat "$PID_FILE")
 
-# Need to put something here to change the owner of the "dev" user and make
-# the necessary directories
-
 # Especially since I'm _running_ rootless-podman on Guix System
 echo "Container running at $CONTAINER_PID"
+
+sudo guix container exec $CONTAINER_PID /run/current-system/profile/bin/bash -c "export GOPATH=/run/current-system/profile/:/root/go GOMODCACHE=/run/curren-system/profile:/root/go/pkg/mod GOCACHE=/run/current-system/profile:/root/.cache/go-build && /run/current-system/profile/bin/go install github.com/pressly/goose/v3/cmd/goose@latest && /run/current-system/profile/bin/go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest"
+
+sudo guix container exec $CONTAINER_PID /run/current-system/profile/bin/bash -c "cd /root/src"
 
 sudo nsenter -a -t "$CONTAINER_PID"
 
