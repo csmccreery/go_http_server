@@ -27,7 +27,7 @@ type ApiConfig struct {
 
 type User struct {
 	ID uuid.UUID `json:"id"`
-	Passwor string `json:"password"`
+	HashedPassword string `json:"hashed_password"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email string `json:"email"`
@@ -92,14 +92,13 @@ func (cfg *ApiConfig) healthHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *ApiConfig) respondWithJSON(w http.ResponseWriter, code int, payload any) {
 	data, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Failed to marshal json", err)
-		w.WriteHeader(500)
+		cfg.respondWithError(w, 500, "Failed to marhal response JSON", err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	fmt.Fprintf(w, string(data))
+	w.Write(data)
 }
 
 func (cfg *ApiConfig) respondWithError(w http.ResponseWriter, code int, msg string, err error) {
@@ -109,26 +108,35 @@ func (cfg *ApiConfig) respondWithError(w http.ResponseWriter, code int, msg stri
 }
 
 func (cfg *ApiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
-	user := User{}
-
 	type Content struct {
 		Email string `json:"email"`
+		Password string `json:"password"`
 	}
 
-	payload := Content{}
+	content := Content{}
 
 	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&payload)
+	err := decoder.Decode(&content)
 	if err != nil {
-		log.Printf("Error decoding user creation request: %s", err)
-		w.WriteHeader(500)
+		cfg.respondWithError(w, 500, "Error decoding user creation request", err)
 		return
 	}
 
-	user.Email = payload.Email
-	newUser, err := cfg.Queries.CreateUser(r.Context(), payload.Email)
+	hash, err := auth.HashPassword(content.Password)
+	if err != nil {
+		cfg.respondWithError(w, 400, "Failed to generate argon hash from user password", err)
+		return
+	}
+
+	params := database.CreateUserParams{
+		Email: content.Email,
+		HashedPassword: hash,
+	}
+	
+	newUser, err := cfg.Queries.CreateUser(r.Context(), params)
 	if err != nil {
 		cfg.respondWithError(w, 400, "Failed to create new user in database", err)
+		return
 	}
 
 	type UserResponse struct {
@@ -284,7 +292,6 @@ func (cfg *ApiConfig) ClearUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *ApiConfig) chirp(w http.ResponseWriter, r *http.Request) {
-	chirp := Chirp{}
 	type Content struct {
 		Body string `json:"body"`
 		UserId string `json:"user_id"`
@@ -309,9 +316,6 @@ func (cfg *ApiConfig) chirp(w http.ResponseWriter, r *http.Request) {
 		"fornax": true,
 	}
 	cleanedBody := cleanProfaneWords(content.Body, profaneMap)
-
-	chirp.Body = cleanedBody
-	chirp.UserID = content.UserId
 
 	user_id, err := uuid.Parse(content.UserId)
 	fmt.Printf("raw user id: %q\n", content.UserId)
@@ -349,16 +353,67 @@ func (cfg *ApiConfig) chirp(w http.ResponseWriter, r *http.Request) {
 
 	cfg.respondWithJSON(w, 201, resp)
 }
-	
-func main() {
-	godotenv.Load()
-	dbURL := os.Getenv("DB_URL")
-	db, err :=sql.Open("postgres", dbURL)
+
+func (cfg *ApiConfig) Login(w http.ResponseWriter, r *http.Request) {
+	type Content struct {
+		Password string `json:"password"`
+		Email string `json:"email"`
+	}
+
+	content := Content{}
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&content)
 	if err != nil {
+		cfg.respondWithError(w, 400, "Failed to decode JSON request", err)
 		return
 	}
+
+	user, err := cfg.Queries.GetUserByEmail(r.Context(), content.Email)
+	if err != nil {
+		cfg.respondWithError(w, 401, "Unauthorized", err)
+		return
+	}
+
+	valid, err := auth.CheckPasswordHash(content.Password, user.HashedPassword)
+	if err != nil || !valid {
+		cfg.respondWithError(w, 401, "Unauthorized", err)
+		return
+	}
+
+	type CleanedUserResponse struct {
+		ID uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email string `json:"email"`
+	}
+
+	resp := CleanedUserResponse{
+		ID: user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email: user.Email,
+	}
+
+	cfg.respondWithJSON(w, 200, resp)
+	
+}
+
+func Run() error {
+	if err := godotenv.Load(); err != nil {
+		return fmt.Errorf("Failed to load .env file: %w", err)
+	}
+	
+	dbURL := os.Getenv("DB_URL")
+	if db, err := sql.Open("postgres", dbURL); err != nil {
+		return fmt.Errorf("Failed to open database connection: %w", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		return fmt.Errorf("Failed to ping database", err)
+	}
+	defer db.Close()
+	
 	dbQueries := database.New(db)
-		
 	servMux := http.NewServeMux()
 	
 	cfg := &ApiConfig{}
@@ -371,6 +426,7 @@ func main() {
 	servMux.Handle("/app/assets", http.StripPrefix("/app/", cfg.middleWareMetricsInc(fileServer)))
 
 	servMux.HandleFunc("POST /api/users", cfg.CreateUser)
+	servMux.HandleFunc("POST /api/login", cfg.Login)
 	servMux.HandleFunc("POST /api/chirps", cfg.chirp)
 	servMux.HandleFunc("GET /api/chirps", cfg.GetChirps)
 	servMux.HandleFunc("GET /api/chirps/{chirpID}", cfg.GetChirp)
@@ -382,5 +438,12 @@ func main() {
 	
 	
 	fmt.Printf("Listening on port 8080")
-	log.Fatal(http.ListenAndServe(":8080", servMux))
+	return http.ListenAndServe(":8080", servMux)
+}
+	
+func main() {
+	if err := Run(); err != nil {
+		log.Printf("Application encountered a fatal error: %v", err)
+		os.Exit(1)
+	}
 }
