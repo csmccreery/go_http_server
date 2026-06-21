@@ -4,18 +4,13 @@ import _ "github.com/lib/pq"
 
 import (
 	"time"
-	"os"
 	"fmt"
-	"database/sql"
 	"sync/atomic"
-	"log"
 	"net/http"
 	"encoding/json"
-	"github.com/joho/godotenv"
 	"github.com/google/uuid"
 	"github.com/go_http_server/internal/database"
 	"github.com/go_http_server/internal/auth"
-	"github.com/go_http_server/internal/helpers"
 )
 
 
@@ -59,19 +54,6 @@ func (cfg *ApiConfig) respondWithError(w http.ResponseWriter, code int, msg stri
 	fmt.Fprintf(w, "Error: %s: %v", msg, err)
 }
 
-func CleanProfaneWords(chirp string, profaneMap map[string]bool) string {
-	fields := strings.Fields(chirp)
-	for i:=0; i<len(fields); i++ {
-		word := strings.ToLower(fields[i])
-		_, ok := profaneMap[word]
-		if ok {
-			fields[i] = "****"
-		}
-	}
-
-	return strings.Join(fields, " ")
-}
-
 func (cfg *ApiConfig) MiddleWareMetricsInc(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg.FileServerHits.Add(1)
@@ -83,12 +65,12 @@ func (cfg *ApiConfig) HandleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	
-	fmt.Fprintf(w, "<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.fileServerHits.Load())
+	fmt.Fprintf(w, "<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.FileServerHits.Load())
 }
 
 
 func (cfg *ApiConfig) ResetMetrics(w http.ResponseWriter, r *http.Request) {
-	cfg.fileServerHits.Store(0)
+	cfg.FileServerHits.Store(0)
 	cfg.Queries.ClearUsers(r.Context())
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -315,7 +297,7 @@ func (cfg *ApiConfig) Chirp(w http.ResponseWriter, r *http.Request) {
 		"sharbert": true,
 		"fornax": true,
 	}
-	cleanedBody := helpers.CleanProfaneWords(content.Body, profaneMap)
+	cleanedBody := CleanProfaneWords(content.Body, profaneMap)
 
 	user_id, err := uuid.Parse(content.UserId)
 	fmt.Printf("raw user id: %q\n", content.UserId)

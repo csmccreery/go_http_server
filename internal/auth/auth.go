@@ -4,6 +4,7 @@ import (
 	"github.com/alexedwards/argon2id"
 	"github.com/google/uuid"
 	"github.com/golang-jwt/jwt/v5"
+	"errors"
 	"time"
 )
 
@@ -44,11 +45,25 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 	return ss, nil
 }
 
-func validate(token *jwt.Token) []byte {
-	//
-}
-
 func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	p := jwt.NewParser()
-	token, err := p.ParseWithClaims(tokenString, claims, validate)
+	type ClaimStruct struct {
+		Id uuid.UUID `json:"id"`
+		jwt.RegisteredClaims
+	}
+
+	// ParseWithClaims name is a litte misleading, it parses /into/ the claims struct, not from.
+	token, err := p.ParseWithClaims(tokenString, &ClaimStruct{}, func(token *jwt.Token) (any, error) {
+		return []byte("Valid"), nil
+	})
+	
+	if err != nil {
+		return uuid.UUID{}, err
+	} else if claims, ok := token.Claims.(*ClaimStruct); ok {
+		return claims.Id, nil
+	} else {
+		return uuid.UUID{}, errors.New("Unknown claims type, cannot proceed")
+	}
+
+	return uuid.UUID{}, errors.New("Unknown error has occurred")
 }

@@ -4,9 +4,8 @@ import _ "github.com/lib/pq"
 
 import (
 	"github.com/go_http_server/internal/database"
-	"github.com/go_http_server/internal/auth"
 	"github.com/go_http_server/internal/server"
-	"github.com/go_http_server/internal/helpers"
+	"github.com/joho/godotenv"
 	"os"
 	"fmt"
 	"database/sql"
@@ -20,7 +19,8 @@ func Run() error {
 	}
 	
 	dbURL := os.Getenv("DB_URL")
-	if db, err := sql.Open("postgres", dbURL); err != nil {
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
 		return fmt.Errorf("Failed to open database connection: %w", err)
 	}
 
@@ -32,14 +32,14 @@ func Run() error {
 	dbQueries := database.New(db)
 	servMux := http.NewServeMux()
 	
-	cfg := &ApiConfig{}
+	cfg := &server.ApiConfig{}
 	cfg.Ok = true
 	cfg.Queries = dbQueries
 
 	fileServer := http.FileServer(http.Dir("."))
 
-	servMux.Handle("/app/", http.StripPrefix("/app/", cfg.middleWareMetricsInc(fileServer)))
-	servMux.Handle("/app/assets", http.StripPrefix("/app/", cfg.middleWareMetricsInc(fileServer)))
+	servMux.Handle("/app/", http.StripPrefix("/app/", cfg.MiddleWareMetricsInc(fileServer)))
+	servMux.Handle("/app/assets", http.StripPrefix("/app/", cfg.MiddleWareMetricsInc(fileServer)))
 	
 	servMux.HandleFunc("POST /api/users", cfg.CreateUser)
 	servMux.HandleFunc("POST /api/login", cfg.Login)
