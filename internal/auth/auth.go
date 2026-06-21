@@ -1,10 +1,10 @@
 package auth
 
 import (
-	"github.com/alexedwards/argon2id"
-	"github.com/google/uuid"
-	"github.com/golang-jwt/jwt/v5"
 	"errors"
+	"github.com/alexedwards/argon2id"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"time"
 )
 
@@ -30,10 +30,10 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 	signingKey := []byte(tokenSecret)
 
 	claims := &jwt.RegisteredClaims{
-		Issuer: "chirpy-access",
-		IssuedAt: jwt.NewNumericDate(time.Now().UTC()),
+		Issuer:    "chirpy-access",
+		IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiresIn)),
-		Subject: userID.String(),
+		Subject:   userID.String(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -56,7 +56,7 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	token, err := p.ParseWithClaims(tokenString, &ClaimStruct{}, func(token *jwt.Token) (any, error) {
 		return []byte("Valid"), nil
 	})
-	
+
 	if err != nil {
 		return uuid.UUID{}, err
 	} else if claims, ok := token.Claims.(*ClaimStruct); ok {

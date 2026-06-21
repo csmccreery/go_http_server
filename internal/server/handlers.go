@@ -3,37 +3,36 @@ package server
 import _ "github.com/lib/pq"
 
 import (
-	"time"
-	"fmt"
-	"sync/atomic"
-	"net/http"
 	"encoding/json"
-	"github.com/google/uuid"
-	"github.com/go_http_server/internal/database"
+	"fmt"
 	"github.com/go_http_server/internal/auth"
+	"github.com/go_http_server/internal/database"
+	"github.com/google/uuid"
+	"net/http"
+	"sync/atomic"
+	"time"
 )
-
 
 type ApiConfig struct {
 	FileServerHits atomic.Int32
-	Queries *database.Queries
-	Ok bool
+	Queries        *database.Queries
+	Ok             bool
 }
 
 type User struct {
-	ID uuid.UUID `json:"id"`
-	HashedPassword string `json:"hashed_password"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email string `json:"email"`
+	ID             uuid.UUID `json:"id"`
+	HashedPassword string    `json:"hashed_password"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	Email          string    `json:"email"`
 }
 
 type Chirp struct {
-	ID string `json:"id"`
+	ID        string    `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
-	Body string `json:"body"`
-	UserID string `json:"user_id"`
+	Body      string    `json:"body"`
+	UserID    string    `json:"user_id"`
 }
 
 func (cfg *ApiConfig) respondWithJSON(w http.ResponseWriter, code int, payload any) {
@@ -64,10 +63,9 @@ func (cfg *ApiConfig) MiddleWareMetricsInc(next http.Handler) http.Handler {
 func (cfg *ApiConfig) HandleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	
+
 	fmt.Fprintf(w, "<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.FileServerHits.Load())
 }
-
 
 func (cfg *ApiConfig) ResetMetrics(w http.ResponseWriter, r *http.Request) {
 	cfg.FileServerHits.Store(0)
@@ -91,7 +89,7 @@ func (cfg *ApiConfig) HealthHandler(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *ApiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
 	type Content struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 
@@ -111,10 +109,10 @@ func (cfg *ApiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := database.CreateUserParams{
-		Email: content.Email,
+		Email:          content.Email,
 		HashedPassword: hash,
 	}
-	
+
 	newUser, err := cfg.Queries.CreateUser(r.Context(), params)
 	if err != nil {
 		cfg.respondWithError(w, 400, "Failed to create new user in database", err)
@@ -122,19 +120,19 @@ func (cfg *ApiConfig) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type UserResponse struct {
-		ID uuid.UUID `json:"id"`
+		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
-		Email string `json:"email"`
+		Email     string    `json:"email"`
 	}
 
 	resp := UserResponse{
-		ID: newUser.ID,
+		ID:        newUser.ID,
 		CreatedAt: newUser.CreatedAt,
 		UpdatedAt: newUser.UpdatedAt,
-		Email: newUser.Email,
+		Email:     newUser.Email,
 	}
-	
+
 	cfg.respondWithJSON(w, 201, resp)
 
 }
@@ -147,25 +145,24 @@ func (cfg *ApiConfig) GetChirps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type ChirpResponse struct {
-		ID uuid.UUID `json:"id"`
+		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
-		Body string `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
 	}
 
-
 	respChirps := []ChirpResponse{}
-	
+
 	for _, chirp := range allChirps {
 		resp := ChirpResponse{
-			ID: chirp.ID,
+			ID:        chirp.ID,
 			CreatedAt: chirp.CreatedAt,
 			UpdatedAt: chirp.UpdatedAt,
-			Body: chirp.Body,
-			UserID: chirp.UserID,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
 		}
-		
+
 		respChirps = append(respChirps, resp)
 	}
 
@@ -179,7 +176,7 @@ func (cfg *ApiConfig) GetChirp(w http.ResponseWriter, r *http.Request) {
 		cfg.respondWithError(w, 404, "Invalid UUID", err)
 		return
 	}
-	
+
 	chirp, err := cfg.Queries.GetChirp(r.Context(), chirpId)
 	if err != nil {
 		cfg.respondWithError(w, 404, "Failed to retrieve chirp", err)
@@ -187,19 +184,19 @@ func (cfg *ApiConfig) GetChirp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type ChirpResponse struct {
-		ID uuid.UUID `json:"id"`
+		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
-		Body string `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
 	}
 
 	resp := ChirpResponse{
-		ID: chirp.ID,
+		ID:        chirp.ID,
 		CreatedAt: chirp.CreatedAt,
 		UpdatedAt: chirp.UpdatedAt,
-		Body: chirp.Body,
-		UserID: chirp.UserID,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
 	}
 
 	cfg.respondWithJSON(w, 200, resp)
@@ -213,22 +210,22 @@ func (cfg *ApiConfig) GetUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type UserResponse struct {
-		ID uuid.UUID `json:"id"`
+		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
-		Email string `json:"email"`
+		Email     string    `json:"email"`
 	}
 
 	respUsers := []UserResponse{}
-	
+
 	for _, user := range allUsers {
 		resp := UserResponse{
-			ID: user.ID,
+			ID:        user.ID,
 			CreatedAt: user.CreatedAt,
 			UpdatedAt: user.UpdatedAt,
-			Email: user.Email,
+			Email:     user.Email,
 		}
-		
+
 		respUsers = append(respUsers, resp)
 	}
 
@@ -242,7 +239,7 @@ func (cfg *ApiConfig) GetUser(w http.ResponseWriter, r *http.Request) {
 		cfg.respondWithError(w, 404, "Invalid UUID", err)
 		return
 	}
-	
+
 	user, err := cfg.Queries.GetUser(r.Context(), userId)
 	if err != nil {
 		cfg.respondWithError(w, 404, "Failed to retrieve user", err)
@@ -250,17 +247,17 @@ func (cfg *ApiConfig) GetUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type UserResponse struct {
-		ID uuid.UUID `json:"id"`
+		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
-		Email string `json:"email"`
+		Email     string    `json:"email"`
 	}
 
 	resp := UserResponse{
-		ID: user.ID,
+		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
-		Email: user.Email,
+		Email:     user.Email,
 	}
 
 	cfg.respondWithJSON(w, 200, resp)
@@ -275,7 +272,7 @@ func (cfg *ApiConfig) ClearUsers(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *ApiConfig) Chirp(w http.ResponseWriter, r *http.Request) {
 	type Content struct {
-		Body string `json:"body"`
+		Body   string `json:"body"`
 		UserId string `json:"user_id"`
 	}
 
@@ -294,8 +291,8 @@ func (cfg *ApiConfig) Chirp(w http.ResponseWriter, r *http.Request) {
 
 	profaneMap := map[string]bool{
 		"kerfuffle": true,
-		"sharbert": true,
-		"fornax": true,
+		"sharbert":  true,
+		"fornax":    true,
 	}
 	cleanedBody := CleanProfaneWords(content.Body, profaneMap)
 
@@ -307,7 +304,7 @@ func (cfg *ApiConfig) Chirp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := database.CreateChirpParams{
-		Body: cleanedBody,
+		Body:   cleanedBody,
 		UserID: user_id,
 	}
 
@@ -318,19 +315,19 @@ func (cfg *ApiConfig) Chirp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type ChirpResponse struct {
-		ID uuid.UUID `json:"id"`
+		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
-		Body string `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
 	}
 
 	resp := ChirpResponse{
-		ID: newChirp.ID,
+		ID:        newChirp.ID,
 		CreatedAt: newChirp.CreatedAt,
 		UpdatedAt: newChirp.UpdatedAt,
-		Body: newChirp.Body,
-		UserID: newChirp.UserID,
+		Body:      newChirp.Body,
+		UserID:    newChirp.UserID,
 	}
 
 	cfg.respondWithJSON(w, 201, resp)
@@ -339,7 +336,7 @@ func (cfg *ApiConfig) Chirp(w http.ResponseWriter, r *http.Request) {
 func (cfg *ApiConfig) Login(w http.ResponseWriter, r *http.Request) {
 	type Content struct {
 		Password string `json:"password"`
-		Email string `json:"email"`
+		Email    string `json:"email"`
 	}
 
 	content := Content{}
@@ -363,20 +360,19 @@ func (cfg *ApiConfig) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type CleanedUserResponse struct {
-		ID uuid.UUID `json:"id"`
+		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
-		Email string `json:"email"`
+		Email     string    `json:"email"`
 	}
 
 	resp := CleanedUserResponse{
-		ID: user.ID,
+		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
-		Email: user.Email,
+		Email:     user.Email,
 	}
 
 	cfg.respondWithJSON(w, 200, resp)
-	
-}
 
+}
