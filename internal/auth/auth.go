@@ -5,6 +5,7 @@ import (
 	"github.com/alexedwards/argon2id"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"net/http"
 	"time"
 )
 
@@ -54,7 +55,7 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 
 	// ParseWithClaims name is a litte misleading, it parses /into/ the claims struct, not from.
 	token, err := p.ParseWithClaims(tokenString, &ClaimStruct{}, func(token *jwt.Token) (any, error) {
-		return []byte("Valid"), nil
+		return []byte(tokenSecret), nil
 	})
 
 	if err != nil {
@@ -66,4 +67,13 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	}
 
 	return uuid.UUID{}, errors.New("Unknown error has occurred")
+}
+
+func GetBearerToken(headers http.Header) (string, error) {
+	tokenString := headers.Get("Bearer")
+	if tokenString == "" {
+		return "", errors.New("Bearer not found in request headers")
+	}
+
+	return tokenString, nil
 }

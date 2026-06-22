@@ -18,7 +18,8 @@ func Run() error {
 		return fmt.Errorf("Failed to load .env file: %w", err)
 	}
 
-	dbURL := os.Getenv("DB_URL")
+	dbURL := os.GetEnv("DB_URL")
+	serverSecret := os.GetEnv("SERVER_SECRET")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		return fmt.Errorf("Failed to open database connection: %w", err)
@@ -35,6 +36,7 @@ func Run() error {
 	cfg := &server.ApiConfig{}
 	cfg.Ok = true
 	cfg.Queries = dbQueries
+	cfg.Secret = serverSecret
 
 	fileServer := http.FileServer(http.Dir("."))
 

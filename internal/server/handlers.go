@@ -17,6 +17,7 @@ type ApiConfig struct {
 	FileServerHits atomic.Int32
 	Queries        *database.Queries
 	Ok             bool
+	Secret         string
 }
 
 type User struct {
@@ -284,6 +285,18 @@ func (cfg *ApiConfig) Chirp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		cfg.respondWithError(w, 400, "Failed to create JWT", err)
+		return
+	}
+
+	user_id, err := auth.ValidateJWT(token, cfg.Secret)
+	if err != nil {
+		cfg.respondWithError(w, 401, "Unauthorized", err)
+		return
+	}
+
 	if len(content.Body) > 140 {
 		cfg.respondWithError(w, 400, "Chirp is too long", err)
 		return
@@ -296,12 +309,12 @@ func (cfg *ApiConfig) Chirp(w http.ResponseWriter, r *http.Request) {
 	}
 	cleanedBody := CleanProfaneWords(content.Body, profaneMap)
 
-	user_id, err := uuid.Parse(content.UserId)
-	fmt.Printf("raw user id: %q\n", content.UserId)
-	if err != nil {
-		cfg.respondWithError(w, 400, "Failed to extract uuid from chirp", err)
-		return
-	}
+	// user_id, err := uuid.Parse(content.UserId)
+	// fmt.Printf("raw user id: %q\n", content.UserId)
+	// if err != nil {
+	// 	cfg.respondWithError(w, 400, "Failed to extract uuid from chirp", err)
+	// 	return
+	// }
 
 	params := database.CreateChirpParams{
 		Body:   cleanedBody,
@@ -335,8 +348,9 @@ func (cfg *ApiConfig) Chirp(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *ApiConfig) Login(w http.ResponseWriter, r *http.Request) {
 	type Content struct {
-		Password string `json:"password"`
-		Email    string `json:"email"`
+		Password         string `json:"password"`
+		Email            string `json:"email"`
+		ExpiresInSeconds int    `json:"expires_in_seconds,omitempty"`
 	}
 
 	content := Content{}
@@ -359,11 +373,23 @@ func (cfg *ApiConfig) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	expires := time.Duration(1 * time.Hour)
+	if content.ExpiresInSeconds != 0 {
+		expires = time.Duration(content.ExpiresInSeconds) * time.Second
+	}
+
+	token, err := auth.MakeJWT(user.ID, cfg.Secret, expires)
+	if err != nil {
+		cfg.respondWithError(w, 401, "Failed to generate token for user", err)
+		return
+	}
+
 	type CleanedUserResponse struct {
 		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email     string    `json:"email"`
+		Token     string    `json:"token"`
 	}
 
 	resp := CleanedUserResponse{
@@ -371,6 +397,7 @@ func (cfg *ApiConfig) Login(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email,
+		Token:     token,
 	}
 
 	cfg.respondWithJSON(w, 200, resp)
