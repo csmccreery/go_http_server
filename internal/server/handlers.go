@@ -309,13 +309,6 @@ func (cfg *ApiConfig) Chirp(w http.ResponseWriter, r *http.Request) {
 	}
 	cleanedBody := CleanProfaneWords(content.Body, profaneMap)
 
-	// user_id, err := uuid.Parse(content.UserId)
-	// fmt.Printf("raw user id: %q\n", content.UserId)
-	// if err != nil {
-	// 	cfg.respondWithError(w, 400, "Failed to extract uuid from chirp", err)
-	// 	return
-	// }
-
 	params := database.CreateChirpParams{
 		Body:   cleanedBody,
 		UserID: user_id,
@@ -384,20 +377,29 @@ func (cfg *ApiConfig) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	refreshString := auth.MakeRefreshToken()
+	rToken, err := auth.MakeJWT(user.ID, refreshString, time.Duration(1*time.Hour))
+	if err != nil {
+		cfg.respondWithError(w, 401, "Failed to generate refresh token", err)
+		return
+	}
+
 	type CleanedUserResponse struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
-		Token     string    `json:"token"`
+		ID           uuid.UUID `json:"id"`
+		CreatedAt    time.Time `json:"created_at"`
+		UpdatedAt    time.Time `json:"updated_at"`
+		Email        string    `json:"email"`
+		Token        string    `json:"token"`
+		RefreshToken string    `json:"refresh_token"`
 	}
 
 	resp := CleanedUserResponse{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		Token:     token,
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email,
+		Token:        token,
+		RefreshToken: rToken,
 	}
 
 	cfg.respondWithJSON(w, 200, resp)

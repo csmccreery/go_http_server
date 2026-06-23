@@ -18,8 +18,8 @@ func Run() error {
 		return fmt.Errorf("Failed to load .env file: %w", err)
 	}
 
-	dbURL := os.GetEnv("DB_URL")
-	serverSecret := os.GetEnv("SERVER_SECRET")
+	dbURL := os.Getenv("DB_URL")
+	serverSecret := os.Getenv("SERVER_SECRET")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		return fmt.Errorf("Failed to open database connection: %w", err)

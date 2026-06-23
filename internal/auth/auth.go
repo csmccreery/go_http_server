@@ -1,11 +1,15 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"github.com/alexedwards/argon2id"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -49,7 +53,7 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	p := jwt.NewParser()
 	type ClaimStruct struct {
-		Id uuid.UUID `json:"id"`
+		//Id uuid.UUID `json:"id"`
 		jwt.RegisteredClaims
 	}
 
@@ -61,7 +65,13 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.UUID{}, err
 	} else if claims, ok := token.Claims.(*ClaimStruct); ok {
-		return claims.Id, nil
+		user_id, tokenErr := uuid.Parse(claims.Subject)
+		if tokenErr != nil {
+			return uuid.UUID{}, tokenErr
+		} else {
+			return user_id, nil
+		}
+
 	} else {
 		return uuid.UUID{}, errors.New("Unknown claims type, cannot proceed")
 	}
@@ -70,10 +80,19 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 }
 
 func GetBearerToken(headers http.Header) (string, error) {
-	tokenString := headers.Get("Bearer")
+	tokenString := strings.Split(headers.Get("Authorization"), " ")[1]
+	fmt.Printf("%v", tokenString)
 	if tokenString == "" {
 		return "", errors.New("Bearer not found in request headers")
 	}
 
 	return tokenString, nil
+}
+
+func MakeRefreshToken() string {
+	b := [32]byte{}
+	rand.Read(b)
+
+	encodedStr := hex.EncodeToString(b)
+	return encodedStr
 }
